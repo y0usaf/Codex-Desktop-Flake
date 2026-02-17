@@ -52,12 +52,12 @@ For reproducible, dependency-free installation on NixOS or systems with Nix:
 
 ```bash
 # Direct installation from flake
-nix run github:y0usaf/codex-desktop-linux
+nix run github:y0usaf/Codex-Desktop-Nix
 
 # Or add to your NixOS configuration
 # In flake.nix inputs:
-codex-desktop-linux = {
-  url = "github:y0usaf/codex-desktop-linux";
+codex-desktop-nix = {
+  url = "github:y0usaf/Codex-Desktop-Nix";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 
@@ -72,8 +72,8 @@ The flake handles all dependencies (Electron 40, Node.js, Python, 7z) automatica
 ### Option B: Auto-download DMG
 
 ```bash
-git clone https://github.com/ilysenko/codex-desktop-linux.git
-cd codex-desktop-linux
+git clone https://github.com/y0usaf/Codex-Desktop-Nix.git
+cd Codex-Desktop-Nix
 chmod +x install.sh
 ./install.sh
 ```
@@ -91,13 +91,13 @@ Download `Codex.dmg` from [openai.com/codex](https://openai.com/codex/), then:
 The app is installed into `codex-app/` next to the install script:
 
 ```bash
-codex-desktop-linux/codex-app/start.sh
+Codex-Desktop-Nix/codex-app/start.sh
 ```
 
 Or add an alias to your shell:
 
 ```bash
-echo 'alias codex-desktop="~/codex-desktop-linux/codex-app/start.sh"' >> ~/.bashrc
+echo 'alias codex-desktop="~/Codex-Desktop-Nix/codex-app/start.sh"' >> ~/.bashrc
 ```
 
 ### Custom install directory

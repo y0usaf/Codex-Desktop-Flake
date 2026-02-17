@@ -292,7 +292,7 @@ in
 
     meta = {
       description = "OpenAI Codex Desktop for Linux";
-      homepage = "https://github.com/ilysenko/codex-desktop-linux";
+      homepage = "https://github.com/y0usaf/Codex-Desktop-Nix";
       license = lib.licenses.mit;
       platforms = ["x86_64-linux" "aarch64-linux"];
       maintainers = with lib.maintainers; [];
