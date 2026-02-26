@@ -1,0 +1,47 @@
+name: Daily DMG Hash Refresh
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dmg-hash:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Update pinned DMG hash
+        run: ./scripts/update-dmg-hash.sh
+
+      - name: Validate build after hash refresh
+        run: nix build .#packages.x86_64-linux.default
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: codex/daily-dmg-hash
+          delete-branch: true
+          commit-message: "chore: refresh pinned Codex DMG hash"
+          title: "chore: refresh pinned Codex DMG hash"
+          body: |
+            Automated daily refresh of the pinned `Codex.dmg` hash in `package.nix`.
+
+            Note: this only updates the DMG source hash.
+            Before merging, run a full local validation (`nix build` + launch smoke test).
+            If upstream internals changed, follow-up updates to `better-sqlite3` / `node-pty` pins and hashes may still be required.
+          labels: |
+            dependencies
+            automation

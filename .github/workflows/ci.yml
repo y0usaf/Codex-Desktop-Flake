@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Build package
+        run: nix build .#packages.x86_64-linux.default
+
+      - name: Smoke launch check
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="./result/bin/codex-desktop"
+          test -x "$APP"
+
+          set +e
+          timeout 20s xvfb-run -a "$APP" --disable-gpu --no-sandbox > smoke.log 2>&1
+          code=$?
+          set -e
+
+          # 0: exited cleanly, 124: timed out (app stayed alive) - both are acceptable for this smoke check.
+          if [[ "$code" -ne 0 && "$code" -ne 124 ]]; then
+            echo "Smoke check failed with exit code: $code"
+            cat smoke.log
+            exit 1
+          fi
+
+          echo "Smoke check passed with exit code: $code"
