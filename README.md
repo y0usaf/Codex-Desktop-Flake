@@ -17,25 +17,25 @@ The installer:
 
 ## Prerequisites
 
-**Node.js 20+**, **npm**, **Python 3**, **7z**, **curl**, and **build tools** (gcc/g++/make).
+**Node.js 20+**, **npm**, **Python 3**, **7z**, **curl**, **unzip**, and **build tools** (gcc/g++/make).
 
 ### Debian/Ubuntu
 
 ```bash
-sudo apt install nodejs npm python3 p7zip-full curl build-essential
+sudo apt install nodejs npm python3 p7zip-full curl unzip build-essential
 ```
 
 ### Fedora
 
 ```bash
-sudo dnf install nodejs npm python3 p7zip curl
+sudo dnf install nodejs npm python3 p7zip curl unzip
 sudo dnf groupinstall 'Development Tools'
 ```
 
 ### Arch
 
 ```bash
-sudo pacman -S nodejs npm python p7zip curl base-devel
+sudo pacman -S nodejs npm python p7zip curl unzip base-devel
 ```
 
 You also need the **Codex CLI**:
@@ -52,17 +52,17 @@ For reproducible, dependency-free installation on NixOS or systems with Nix:
 
 ```bash
 # Direct installation from flake
-nix run github:y0usaf/Codex-Desktop-Nix
+nix run github:y0usaf/codex-desktop-flake
 
-# Or add to your NixOS configuration
-# In flake.nix inputs:
-codex-desktop-nix = {
-  url = "github:y0usaf/Codex-Desktop-Nix";
+# Or add to your own flake inputs:
+codex-desktop-flake = {
+  url = "github:y0usaf/codex-desktop-flake";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 
-# Then in your NixOS module:
-user.programs.codex-desktop.enable = true;
+# Then install/use the package from outputs:
+# packages.${system}.default
+# apps.${system}.default
 ```
 
 The flake handles all dependencies (Electron 40, Node.js, Python, 7z) automatically. The app runs with Wayland/Ozone support enabled by default.
@@ -72,8 +72,8 @@ The flake handles all dependencies (Electron 40, Node.js, Python, 7z) automatica
 ### Option B: Auto-download DMG
 
 ```bash
-git clone https://github.com/y0usaf/Codex-Desktop-Nix.git
-cd Codex-Desktop-Nix
+git clone https://github.com/y0usaf/codex-desktop-flake.git
+cd codex-desktop-flake
 chmod +x install.sh
 ./install.sh
 ```
@@ -91,13 +91,13 @@ Download `Codex.dmg` from [openai.com/codex](https://openai.com/codex/), then:
 The app is installed into `codex-app/` next to the install script:
 
 ```bash
-Codex-Desktop-Nix/codex-app/start.sh
+codex-desktop-flake/codex-app/start.sh
 ```
 
 Or add an alias to your shell:
 
 ```bash
-echo 'alias codex-desktop="~/Codex-Desktop-Nix/codex-app/start.sh"' >> ~/.bashrc
+echo 'alias codex-desktop="~/codex-desktop-flake/codex-app/start.sh"' >> ~/.bashrc
 ```
 
 ### Custom install directory
@@ -126,6 +126,23 @@ A small Python HTTP server is used as a workaround: when `app.isPackaged` is `fa
 | `CODEX_CLI_PATH` error | Install CLI: `npm i -g @openai/codex` |
 | GPU/rendering issues | Try: `./codex-app/start.sh --disable-gpu` |
 | Sandbox errors | The `--no-sandbox` flag is already set in `start.sh` |
+
+## Reliability checks
+
+This repo uses a minimal reliability layer to catch breakage without heavy test infrastructure:
+
+- CI on PRs/pushes runs `nix build .#packages.x86_64-linux.default`
+- CI then runs a short smoke launch (headless via Xvfb) to ensure the app does not crash immediately
+- The daily DMG hash automation also runs a build validation before opening a PR
+
+### Manual release checklist
+
+Before merging substantial packaging changes, do a quick local validation:
+
+- App launches (`nix run .` or `./codex-app/start.sh`)
+- Codex CLI is detected (`codex` on PATH or `CODEX_CLI_PATH` set)
+- Terminal opens in the app
+- Basic prompt/response round-trip works
 
 ## Disclaimer
 
