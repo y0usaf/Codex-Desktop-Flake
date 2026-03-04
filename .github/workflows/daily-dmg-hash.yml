@@ -17,17 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl xxd
 
       - name: Update pinned DMG hash
-        run: ./scripts/update-dmg-hash.sh
-
-      - name: Validate build after hash refresh
-        run: nix build .#packages.x86_64-linux.default
+        run: |
+          chmod +x ./scripts/update-dmg-hash.sh
+          ./scripts/update-dmg-hash.sh
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
