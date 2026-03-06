@@ -30,7 +30,7 @@ in
 
     src = fetchurl {
       url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-      hash = "sha256-4ricm3TGObpAIJRFhY7GNX/mFB/f8Va9Yf+3rVAV2ao=";
+      hash = "sha256-4oKdhkRmwUbvnexeguuwfv+oRHhR3WYbUwewB9rpLDc=";
     };
 
     nativeBuildInputs = [
