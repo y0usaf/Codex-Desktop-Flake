@@ -245,8 +245,8 @@ in
       # or ''${VAR} (Nix ''$ escape) to prevent Nix from treating them as interpolations.
       cat > $out/bin/codex-desktop << 'WRAPPER'
 #!/bin/bash
-# ${electron_40} and ${python3} below are baked-in Nix store paths (build-time).
-# Runtime shell variables use ${VAR} syntax (no Nix processing at runtime).
+# electron_40 and python3 references below are baked-in Nix store paths (build-time).
+# Runtime bash variables use dollar-brace syntax; only Nix-known names are interpolated.
 export LD_LIBRARY_PATH="${electron_40}/lib:${electron_40}/libexec/electron''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export NIXOS_OZONE_WL=1
 # auto-detect Wayland vs X11 rather than forcing one platform
