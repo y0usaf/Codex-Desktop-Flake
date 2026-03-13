@@ -123,6 +123,7 @@ build_native_modules() {
 
     echo '{"private":true}' > package.json
 
+    # Note: packages are fetched from npm without hash verification. For a fully reproducible build, use the Nix flake (Option A) instead.
     info "Installing fresh sources from npm..."
     npm install "electron@$ELECTRON_VERSION" --save-dev --ignore-scripts 2>&1 >&2
     npm install "better-sqlite3@$bs3_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2
@@ -223,14 +224,22 @@ create_start_script() {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WEBVIEW_DIR="$SCRIPT_DIR/content/webview"
 
-pkill -f "http.server 5175" 2>/dev/null
-sleep 0.3
+if [ -f "$SCRIPT_DIR/.http-server.pid" ]; then
+    old_pid="$(cat "$SCRIPT_DIR/.http-server.pid")"
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        if grep -q 'http\.server' "/proc/$old_pid/cmdline" 2>/dev/null; then
+            kill "$old_pid" 2>/dev/null
+        fi
+    fi
+    rm -f "$SCRIPT_DIR/.http-server.pid"
+fi
 
 if [ -d "$WEBVIEW_DIR" ] && [ "$(ls -A "$WEBVIEW_DIR" 2>/dev/null)" ]; then
     cd "$WEBVIEW_DIR"
-    python3 -m http.server 5175 &> /dev/null &
+    python3 -m http.server 5175 --bind 127.0.0.1 > /dev/null 2>&1 &
     HTTP_PID=$!
-    trap "kill $HTTP_PID 2>/dev/null" EXIT
+    echo "$HTTP_PID" > "$SCRIPT_DIR/.http-server.pid"
+    trap "kill $HTTP_PID 2>/dev/null; rm -f \"$SCRIPT_DIR/.http-server.pid\"" EXIT
 fi
 
 export CODEX_CLI_PATH="${CODEX_CLI_PATH:-$(which codex 2>/dev/null)}"
@@ -243,6 +252,7 @@ if [ -z "$CODEX_CLI_PATH" ]; then
 fi
 
 cd "$SCRIPT_DIR"
+# --no-sandbox is required on Linux when no SUID sandbox helper is available (common on NixOS)
 exec "$SCRIPT_DIR/electron" --no-sandbox "$@"
 SCRIPT
 

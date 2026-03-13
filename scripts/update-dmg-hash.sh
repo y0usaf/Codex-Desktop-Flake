@@ -1,50 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PACKAGE_NIX="package.nix"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PACKAGE_NIX="$ROOT_DIR/package.nix"
 URL="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 
-echo "Fetching DMG from $URL..."
-TMP=$(mktemp /tmp/Codex.XXXXXX.dmg)
-trap 'rm -f "$TMP"' EXIT
+if ! command -v nix >/dev/null 2>&1; then
+  echo "nix is required" >&2
+  exit 1
+fi
 
-curl -fsSL -o "$TMP" "$URL"
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required" >&2
+  exit 1
+fi
 
-# Compute sha256 in SRI format (sha256-<base64>)
-HASH_HEX=$(sha256sum "$TMP" | awk '{print $1}')
-HASH_B64=$(echo "$HASH_HEX" | xxd -r -p | base64 -w0)
-NEW_HASH="sha256-${HASH_B64}"
+new_hash="$(nix store prefetch-file --json "$URL" | jq -r '.hash')"
 
-echo "New hash: $NEW_HASH"
+if [[ -z "$new_hash" || "$new_hash" == "null" ]]; then
+  echo "Failed to resolve new hash from $URL" >&2
+  exit 1
+fi
 
-# Extract the current DMG hash (specifically the one after the Codex.dmg URL)
-CURRENT_HASH=$(python3 -c "
-import re, sys
-content = open('$PACKAGE_NIX').read()
-m = re.search(r'url = \"https://persistent\.oaistatic\.com/codex-app-prod/Codex\.dmg\";\s*\n\s*hash = \"([^\"]+)\"', content)
-if m:
-    print(m.group(1))
-else:
-    sys.exit(1)
-")
+current_hash="$(awk '
+  /src = fetchurl \{/ { in_src=1 }
+  in_src && /hash = "sha256-/ {
+    match($0, /sha256-[^"]+/)
+    if (RSTART > 0) {
+      print substr($0, RSTART, RLENGTH)
+      exit
+    }
+  }
+  in_src && /^[[:space:]]*};$/ { in_src=0 }
+' "$PACKAGE_NIX")"
 
-echo "Current hash: $CURRENT_HASH"
+if [[ -z "$current_hash" ]]; then
+  echo "Could not locate current DMG hash in $PACKAGE_NIX" >&2
+  exit 1
+fi
 
-if [ "$NEW_HASH" = "$CURRENT_HASH" ]; then
-  echo "Hash unchanged, nothing to do."
+if [[ "$current_hash" == "$new_hash" ]]; then
+  echo "No change: $current_hash"
   exit 0
 fi
 
-# Update only the DMG hash in package.nix
-python3 -c "
-import re
-content = open('$PACKAGE_NIX').read()
-content = re.sub(
-    r'(url = \"https://persistent\.oaistatic\.com/codex-app-prod/Codex\.dmg\";\s*\n\s*hash = \")[^\"]+(\";)',
-    r'\g<1>${NEW_HASH}\g<2>',
-    content
-)
-open('$PACKAGE_NIX', 'w').write(content)
-"
+awk -v new_hash="$new_hash" '
+  /src = fetchurl \{/ { in_src=1 }
+  in_src && /hash = "sha256-/ && !updated {
+    sub(/sha256-[^"]+/, new_hash)
+    updated=1
+  }
+  in_src && /^[[:space:]]*};$/ { in_src=0 }
+  { print }
+  END {
+    if (!updated) {
+      print "Failed to update src hash" > "/dev/stderr"
+      exit 1
+    }
+  }
+' "$PACKAGE_NIX" > "$PACKAGE_NIX.tmp"
 
-echo "Updated $PACKAGE_NIX with new hash."
+mv "$PACKAGE_NIX.tmp" "$PACKAGE_NIX"
+
+echo "Updated DMG hash: $current_hash -> $new_hash"
