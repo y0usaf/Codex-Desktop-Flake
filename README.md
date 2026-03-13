@@ -17,6 +17,8 @@ The installer:
 
 ## Prerequisites
 
+**Note:** The following prerequisites are only required for the shell-script installation paths (Options B and C). If using the Nix flake (Option A, recommended), no additional prerequisites are needed beyond Nix itself.
+
 **Node.js 20+**, **npm**, **Python 3**, **7z**, **curl**, **unzip**, and **build tools** (gcc/g++/make).
 
 ### Debian/Ubuntu
@@ -88,6 +90,38 @@ Download `Codex.dmg` from [openai.com/codex](https://openai.com/codex/), then:
 
 ## Usage
 
+### Nix Flake (Option A)
+
+If you installed via the Nix flake, you can run the app directly:
+
+```bash
+nix run github:y0usaf/codex-desktop-flake
+```
+
+To add it to your NixOS system configuration, include the flake as an input and add the package to your `environment.systemPackages`:
+
+```nix
+# flake.nix
+{
+  inputs.codex-desktop-flake = {
+    url = "github:y0usaf/codex-desktop-flake";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+}
+
+# configuration.nix (inside the module)
+{ pkgs, inputs, ... }:
+{
+  environment.systemPackages = [
+    inputs.codex-desktop-flake.packages.${pkgs.system}.default
+  ];
+}
+```
+
+The `.desktop` file is installed automatically, so the app will appear in your desktop environment's application launcher.
+
+### Shell-script install (Options B/C)
+
 The app is installed into `codex-app/` next to the install script:
 
 ```bash
@@ -126,6 +160,8 @@ A small Python HTTP server is used as a workaround: when `app.isPackaged` is `fa
 | `CODEX_CLI_PATH` error | Install CLI: `npm i -g @openai/codex` |
 | GPU/rendering issues | Try: `./codex-app/start.sh --disable-gpu` |
 | Sandbox errors | The `--no-sandbox` flag is already set in `start.sh` |
+
+> **Linux/NixOS sandbox note:** The app runs with `--no-sandbox` because no SUID sandbox helper is available in the Nix store (or in typical extracted-Electron setups). This is a known Electron/NixOS limitation and not a configuration error. The Chromium sandbox requires a setuid binary that is not provided by Nix-packaged Electron, so `--no-sandbox` is the standard workaround.
 
 ## Reliability checks
 

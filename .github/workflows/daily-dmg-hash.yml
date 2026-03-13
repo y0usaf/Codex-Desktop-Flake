@@ -5,28 +5,31 @@ on:
     - cron: '23 5 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   update-dmg-hash:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl xxd
+      - name: Install Nix
+        uses: cachix/install-nix-action@ba0dd844c9180cbf77aa72a116d6fbc515d0e87b # v27
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Update pinned DMG hash
-        run: |
-          chmod +x ./scripts/update-dmg-hash.sh
-          ./scripts/update-dmg-hash.sh
+        run: ./scripts/update-dmg-hash.sh
+
+      - name: Validate build after hash refresh
+        run: nix build .#packages.x86_64-linux.default
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           branch: codex/daily-dmg-hash
           delete-branch: true
