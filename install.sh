@@ -91,8 +91,13 @@ extract_dmg() {
     local dmg_path="$1"
     info "Extracting DMG with 7z..."
 
-    7z x -y "$dmg_path" -o"$WORK_DIR/dmg-extract" >&2 || \
-        error "Failed to extract DMG"
+    rc=0
+    7z x -y "$dmg_path" -o"$WORK_DIR/dmg-extract" >&2 || rc=$?
+    if [ $rc -eq 1 ]; then
+        warn "7z non-fatal warning (rc=1), continuing"
+    elif [ $rc -gt 1 ]; then
+        error "Failed to extract DMG (7z exit code $rc)"
+    fi
 
     local app_dir
     app_dir=$(find "$WORK_DIR/dmg-extract" -maxdepth 3 -name "*.app" -type d | head -1)
@@ -129,7 +134,9 @@ build_native_modules() {
     npm install "better-sqlite3@$bs3_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2
 
     info "Compiling for Electron v$ELECTRON_VERSION (this takes ~1 min)..."
-    npx --yes @electron/rebuild -v "$ELECTRON_VERSION" --force 2>&1 >&2
+    # Pin @electron/rebuild to major version 3 to avoid pulling an unpinned/potentially
+    # compromised version. For fully reproducible builds with hash verification, use the Nix flake.
+    npx --yes @electron/rebuild@3 -v "$ELECTRON_VERSION" --force 2>&1 >&2
 
     info "Native modules built successfully"
 
@@ -166,7 +173,7 @@ patch_asar() {
     # Repack
     info "Repacking app.asar..."
     cd "$WORK_DIR"
-    npx asar pack app-extracted app.asar --unpack "{*.node,*.so,*.dylib}" 2>/dev/null
+    npx --yes asar pack app-extracted app.asar --unpack "{*.node,*.so,*.dylib}" 2>/dev/null
 
     info "app.asar patched"
 }
@@ -186,6 +193,26 @@ download_electron() {
     local url="https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/electron-v${ELECTRON_VERSION}-linux-${electron_arch}.zip"
 
     curl -L --progress-bar -o "$WORK_DIR/electron.zip" "$url"
+
+    # Verify download integrity against Electron's published SHASUMS256.txt
+    local shasums_url="https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/SHASUMS256.txt"
+    local zip_filename="electron-v${ELECTRON_VERSION}-linux-${electron_arch}.zip"
+    info "Verifying Electron download integrity..."
+    if curl -L -s --max-time 30 "$shasums_url" -o "$WORK_DIR/SHASUMS256.txt"; then
+        local expected_hash actual_hash
+        expected_hash=$(grep " ${zip_filename}$" "$WORK_DIR/SHASUMS256.txt" | awk '{print $1}')
+        actual_hash=$(sha256sum "$WORK_DIR/electron.zip" | awk '{print $1}')
+        if [ -z "$expected_hash" ]; then
+            warn "Could not find hash for ${zip_filename} in SHASUMS256.txt; skipping integrity check"
+        elif [ "$expected_hash" != "$actual_hash" ]; then
+            error "Electron download hash mismatch! Expected: $expected_hash, Got: $actual_hash"
+        else
+            info "Electron integrity verified"
+        fi
+    else
+        warn "Could not download SHASUMS256.txt; skipping integrity check"
+    fi
+
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     unzip -qo "$WORK_DIR/electron.zip"
@@ -236,15 +263,24 @@ fi
 
 if [ -d "$WEBVIEW_DIR" ] && [ "$(ls -A "$WEBVIEW_DIR" 2>/dev/null)" ]; then
     cd "$WEBVIEW_DIR"
-    python3 -m http.server 5175 --bind 127.0.0.1 > /dev/null 2>&1 &
-    HTTP_PID=$!
-    echo "$HTTP_PID" > "$SCRIPT_DIR/.http-server.pid"
-    trap "kill $HTTP_PID 2>/dev/null; rm -f \"$SCRIPT_DIR/.http-server.pid\"" EXIT
+    # Verify port 5175 is free before binding. A pre-existing listener could be a
+    # malicious process; silently connecting to it would serve untrusted webview content.
+    if python3 -c \
+        "import socket; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,0); s.bind(('127.0.0.1',5175)); s.close()" \
+        2>/dev/null; then
+        python3 -m http.server 5175 --bind 127.0.0.1 > /dev/null 2>&1 &
+        HTTP_PID=$!
+        echo "$HTTP_PID" > "$SCRIPT_DIR/.http-server.pid"
+        trap "kill $HTTP_PID 2>/dev/null; rm -f \"$SCRIPT_DIR/.http-server.pid\"" EXIT
+    else
+        echo "Warning: Port 5175 already in use; webview HTTP server not started." >&2
+    fi
 fi
 
 export CODEX_CLI_PATH="${CODEX_CLI_PATH:-$(which codex 2>/dev/null)}"
 # Prevent shell auto-start hooks from attaching zellij in Codex terminals.
-export ZELLIJ=0
+# Override by setting ZELLIJ=1 in your environment before launching.
+export ZELLIJ="${ZELLIJ:-0}"
 
 if [ -z "$CODEX_CLI_PATH" ]; then
     echo "Error: Codex CLI not found. Install with: npm i -g @openai/codex"
@@ -252,8 +288,14 @@ if [ -z "$CODEX_CLI_PATH" ]; then
 fi
 
 cd "$SCRIPT_DIR"
-# --no-sandbox is required on Linux when no SUID sandbox helper is available (common on NixOS)
-exec "$SCRIPT_DIR/electron" --no-sandbox "$@"
+# --no-sandbox is required when no SUID sandbox helper is available (common on NixOS).
+# Set CODEX_ENABLE_SANDBOX=1 on distros where the helper exists to omit this flag.
+# Note: extra flags passed via "$@" (e.g. --remote-debugging-port) are forwarded to Electron.
+if [ -z "${CODEX_ENABLE_SANDBOX:-}" ]; then
+    exec "$SCRIPT_DIR/electron" --no-sandbox "$@"
+else
+    exec "$SCRIPT_DIR/electron" "$@"
+fi
 SCRIPT
 
     chmod +x "$INSTALL_DIR/start.sh"

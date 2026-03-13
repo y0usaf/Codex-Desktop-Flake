@@ -44,16 +44,22 @@ if [[ "$current_hash" == "$new_hash" ]]; then
   exit 0
 fi
 
-awk -v new_hash="$new_hash" '
+new_version="0-unstable-$(date +%Y-%m-%d)"
+
+awk -v new_hash="$new_hash" -v new_version="$new_version" '
   /src = fetchurl \{/ { in_src=1 }
-  in_src && /hash = "sha256-/ && !updated {
+  in_src && /hash = "sha256-/ && !hash_updated {
     sub(/sha256-[^"]+/, new_hash)
-    updated=1
+    hash_updated=1
   }
   in_src && /^[[:space:]]*};$/ { in_src=0 }
+  !in_src && /version = "/ && !version_updated {
+    sub(/"[^"]*"/, "\"" new_version "\"")
+    version_updated=1
+  }
   { print }
   END {
-    if (!updated) {
+    if (!hash_updated) {
       print "Failed to update src hash" > "/dev/stderr"
       exit 1
     }
@@ -63,3 +69,4 @@ awk -v new_hash="$new_hash" '
 mv "$PACKAGE_NIX.tmp" "$PACKAGE_NIX"
 
 echo "Updated DMG hash: $current_hash -> $new_hash"
+echo "Updated version: $new_version"
