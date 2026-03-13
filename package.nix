@@ -58,9 +58,11 @@ in
       # Try to extract DMG
       rc=0
       7z x -y "$src" -o"dmg-extract" 2>&1 || rc=$?
-      if [ $rc -eq 1 ]; then
-        echo "7z warning (non-fatal, rc=1), continuing"
-      elif [ $rc -gt 1 ]; then
+      if [ $rc -le 2 ]; then
+        # rc=1: warnings; rc=2: HFS+ header errors — both are non-fatal when the
+        # .app bundle is present (verified below).
+        echo "7z exited with rc=$rc (non-fatal), continuing"
+      elif [ $rc -gt 2 ]; then
         echo "7z fatal error (exit code $rc)"
         exit 1
       fi
@@ -237,23 +239,38 @@ in
         cp -r app-extracted/webview/* $out/lib/codex-desktop/content/webview/
       fi
 
-      # Create launcher script with proper library paths
+      # Create launcher script with proper library paths.
+      # Nix string escaping note: ${electron_40} and ${python3} are Nix store-path
+      # interpolations resolved at build time. Runtime bash variables use $VAR (no braces)
+      # or ''${VAR} (Nix ''$ escape) to prevent Nix from treating them as interpolations.
       cat > $out/bin/codex-desktop << 'WRAPPER'
 #!/bin/bash
-export LD_LIBRARY_PATH="${electron_40}/lib:${electron_40}/libexec/electron:$LD_LIBRARY_PATH"
+# ${electron_40} and ${python3} below are baked-in Nix store paths (build-time).
+# Runtime shell variables use ${VAR} syntax (no Nix processing at runtime).
+export LD_LIBRARY_PATH="${electron_40}/lib:${electron_40}/libexec/electron''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export NIXOS_OZONE_WL=1
+# auto-detect Wayland vs X11 rather than forcing one platform
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 # Prevent shell auto-start hooks from attaching zellij in Codex terminals.
-export ZELLIJ=0
+# Override by setting ZELLIJ=1 in your environment before launching.
+export ZELLIJ=''${ZELLIJ:-0}
 
 APPDIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 WEBVIEW_DIR="$APPDIR/lib/codex-desktop/content/webview"
 
 if [ -d "$WEBVIEW_DIR" ] && [ -n "$(ls -A "$WEBVIEW_DIR" 2>/dev/null)" ]; then
   cd "$WEBVIEW_DIR"
-  ${python3}/bin/python3 -m http.server 5175 --bind 127.0.0.1 > /dev/null 2>&1 &
-  HTTP_PID=$!
-  trap "kill $HTTP_PID 2>/dev/null" EXIT
+  # Verify port 5175 is free before binding. A pre-existing listener could be a
+  # malicious process; silently connecting to it would serve untrusted webview content.
+  if ${python3}/bin/python3 -c \
+      "import socket; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,0); s.bind(('127.0.0.1',5175)); s.close()" \
+      2>/dev/null; then
+    ${python3}/bin/python3 -m http.server 5175 --bind 127.0.0.1 > /dev/null 2>&1 &
+    HTTP_PID=$!
+    trap "kill $HTTP_PID 2>/dev/null" EXIT
+  else
+    echo "Warning: Port 5175 already in use; webview HTTP server not started." >&2
+  fi
 fi
 
 if [ -z "''${CODEX_CLI_PATH:-}" ]; then
@@ -265,11 +282,19 @@ if [ -z "''${CODEX_CLI_PATH:-}" ]; then
 fi
 
 cd "$APPDIR/lib/codex-desktop"
-# Required on NixOS: no SUID sandbox helper available; see https://github.com/electron/electron/issues/17972
-exec "$APPDIR/lib/codex-desktop/electron" \
-  --no-sandbox \
-  --enable-wayland-ime \
-  resources/app.asar "$@"
+# --no-sandbox: required on NixOS where no SUID sandbox helper is available.
+# On distros where the helper exists, set CODEX_ENABLE_SANDBOX=1 to omit this flag.
+# See https://github.com/electron/electron/issues/17972
+if [ -z "''${CODEX_ENABLE_SANDBOX:-}" ]; then
+  exec "$APPDIR/lib/codex-desktop/electron" \
+    --no-sandbox \
+    --enable-wayland-ime \
+    resources/app.asar "$@"
+else
+  exec "$APPDIR/lib/codex-desktop/electron" \
+    --enable-wayland-ime \
+    resources/app.asar "$@"
+fi
 WRAPPER
       chmod +x $out/bin/codex-desktop
 
@@ -293,8 +318,10 @@ WRAPPER
     meta = {
       description = "OpenAI Codex Desktop for Linux";
       homepage = "https://github.com/y0usaf/codex-desktop-flake";
+      # MIT applies to this packaging flake only. Codex Desktop itself is proprietary OpenAI software.
       license = lib.licenses.mit;
       platforms = ["x86_64-linux" "aarch64-linux"];
+      # Not in nixpkgs; maintained at https://github.com/y0usaf/codex-desktop-flake
       maintainers = with lib.maintainers; [];
     };
   }
