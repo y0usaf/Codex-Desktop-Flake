@@ -28,19 +28,11 @@ jobs:
       - name: Validate build after hash refresh
         run: nix build .#packages.x86_64-linux.default
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
-        with:
-          branch: codex/daily-dmg-hash
-          delete-branch: true
-          commit-message: "chore: refresh pinned Codex DMG hash"
-          title: "chore: refresh pinned Codex DMG hash"
-          body: |
-            Automated daily refresh of the pinned `Codex.dmg` hash in `package.nix`.
-
-            Note: this only updates the DMG source hash.
-            Before merging, run a full local validation (`nix build` + launch smoke test).
-            If upstream internals changed, follow-up updates to `better-sqlite3` / `node-pty` pins and hashes may still be required.
-          labels: |
-            dependencies
-            automation
+      - name: Commit and push hash update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && echo "No changes to commit" && exit 0
+          git add package.nix
+          git commit -m "chore: refresh pinned Codex DMG hash"
+          git push origin main
