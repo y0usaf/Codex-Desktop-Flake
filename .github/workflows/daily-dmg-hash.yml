@@ -28,7 +28,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Update pinned hashes and versions
-        run: nix shell nixpkgs#p7zip nixpkgs#nodejs_20 nixpkgs#nodePackages.asar --command ./scripts/update-dmg-hash.sh
+        run: nix shell nixpkgs#p7zip nixpkgs#nodejs_20 nixpkgs#asar --command ./scripts/update-dmg-hash.sh
 
       - name: Validate build after hash refresh
         run: nix build .#packages.x86_64-linux.default
