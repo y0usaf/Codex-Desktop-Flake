@@ -1,8 +1,8 @@
-name: Daily Upstream Sync
+name: Weekly Flake Update
 
 on:
   schedule:
-    - cron: '23 5 * * *'
+    - cron: '0 12 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  update-dmg-hash:
+  update-flake-lock:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,32 +24,19 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@ba0dd844c9180cbf77aa72a116d6fbc515d0e87b # v27
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Update flake.lock
+        run: nix flake update
 
-      - name: Update pinned hashes and versions
-        run: nix shell nixpkgs#p7zip nixpkgs#nodejs_20 nixpkgs#nodePackages.asar --command ./scripts/update-dmg-hash.sh
-
-      - name: Validate build after hash refresh
+      - name: Validate build
         run: nix build .#packages.x86_64-linux.default
 
-      - name: Commit and push hash update
+      - name: Commit and push lock file update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git diff --quiet && echo "No changes to commit" && exit 0
-          git add package.nix
-          # Build a commit message reflecting what actually changed
-          MSG="chore: sync upstream Codex"
-          BODY=""
-          if git diff --cached package.nix | grep -q 'betterSqlite3Version\|nodePtyVersion'; then
-            BODY="${BODY:+$BODY, }native module versions updated"
-          fi
-          if git diff --cached package.nix | grep -q 'src = fetchurl'; then
-            BODY="${BODY:+$BODY, }DMG hash refreshed"
-          fi
-          [ -n "$BODY" ] && MSG="$MSG ($BODY)"
-          git commit -m "$MSG"
+          git add flake.lock
+          git commit -m "chore: update flake.lock"
           git pull --rebase origin main
           git push origin main
 
@@ -58,7 +45,7 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
-            const title = `Daily upstream sync failed - ${new Date().toISOString().slice(0,10)}`;
+            const title = `Weekly flake update failed - ${new Date().toISOString().slice(0,10)}`;
             const issues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -70,7 +57,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
-                body: `The daily upstream sync workflow failed.\n\nSee: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                body: `The weekly flake.lock update workflow failed.\n\nSee: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
                 labels: ['automated-sync-failure']
               });
             }
