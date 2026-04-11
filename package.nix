@@ -11,12 +11,12 @@
   gnumake,
   pkg-config,
 }: let
-  betterSqlite3Version = "12.5.0";
+  betterSqlite3Version = "12.8.0";
   nodePtyVersion = "1.1.0";
 
   betterSqlite3Src = fetchurl {
     url = "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-${betterSqlite3Version}.tgz";
-    hash = "sha256-CjzQVUsGPDGFuZEu9wWbhEVaLkEdY3+qAWb++f76BMI=";
+    hash = "sha256-JgKlcm0KnY5r5AfFm8El5gURDtqOOwTn741t33YskSI=";
   };
 
   nodePtySrc = fetchurl {
@@ -26,11 +26,11 @@
 in
   stdenv.mkDerivation {
     pname = "codex-desktop";
-    version = "0-unstable-2026-04-09";
+    version = "0-unstable-2026-04-11";
 
     src = fetchurl {
       url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-      hash = "sha256-VxiV6TkbCy8QcPUJ5ziNzzPn/GSS+QSfIkIou94ye6A=";
+      hash = "sha256-uSOeP7IozPh54EKyPyRwQ1xTwfL8lIStWS27ibg7ir8=";
     };
 
     nativeBuildInputs = [
