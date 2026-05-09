@@ -26,11 +26,11 @@
 in
   stdenv.mkDerivation {
     pname = "codex-desktop";
-    version = "0-unstable-2026-05-08";
+    version = "0-unstable-2026-05-09";
 
     src = fetchurl {
       url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-      hash = "sha256-KvrWUJgRYbuG/YFSIc/pdkRhGRK3fDqfKj10O7rjFck=";
+      hash = "sha256-4FroU+UDXJSbB5FfjGhiGyXrQ/R+UYXuaYPoR7oXbyc=";
     };
 
     nativeBuildInputs = [
