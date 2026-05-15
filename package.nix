@@ -2,7 +2,7 @@
   lib,
   stdenv,
   fetchurl,
-  p7zip,
+  _7zz,
   asar,
   nodejs_20,
   python3,
@@ -11,12 +11,12 @@
   gnumake,
   pkg-config,
 }: let
-  betterSqlite3Version = "12.8.0";
+  betterSqlite3Version = "12.9.0";
   nodePtyVersion = "1.1.0";
 
   betterSqlite3Src = fetchurl {
     url = "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-${betterSqlite3Version}.tgz";
-    hash = "sha256-JgKlcm0KnY5r5AfFm8El5gURDtqOOwTn741t33YskSI=";
+    hash = "sha256-rQ4pZQFAxJ0DNbHTVllqqBZvErdY9BiphEYTDjJ48lA=";
   };
 
   nodePtySrc = fetchurl {
@@ -26,15 +26,15 @@
 in
   stdenv.mkDerivation {
     pname = "codex-desktop";
-    version = "0-unstable-2026-05-09";
+    version = "0-unstable-2026-05-14";
 
     src = fetchurl {
       url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-      hash = "sha256-4FroU+UDXJSbB5FfjGhiGyXrQ/R+UYXuaYPoR7oXbyc=";
+      hash = "sha256-WTeptN8D9hF2ffvlJKppfLTOJr5Z0hjokHCnGX6drk0=";
     };
 
     nativeBuildInputs = [
-      p7zip
+      _7zz
       asar
       nodejs_20
       python3
@@ -55,15 +55,10 @@ in
       echo "Extracting DMG from: $src"
       echo "Source file size: $(du -h "$src" | cut -f1)"
 
-      # Try to extract DMG
-      rc=0
-      7z x -y "$src" -o"dmg-extract" 2>&1 || rc=$?
-      if [ $rc -le 2 ]; then
-        # rc=1: warnings; rc=2: HFS+ header errors — both are non-fatal when the
-        # .app bundle is present (verified below).
-        echo "7z exited with rc=$rc (non-fatal), continuing"
-      elif [ $rc -gt 2 ]; then
-        echo "7z fatal error (exit code $rc)"
+      # Try to extract DMG (7zz 24+ supports APFS volumes directly)
+      7zz x -y "$src" -o"dmg-extract" 2>&1
+      if [ $? -ne 0 ]; then
+        echo "7zz extraction failed"
         exit 1
       fi
 
