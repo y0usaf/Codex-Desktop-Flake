@@ -24,10 +24,10 @@ NPM_REGISTRY="https://registry.npmjs.org"
 ###############################################################################
 # Prerequisite checks
 ###############################################################################
-for cmd in nix jq 7z node asar; do
+for cmd in nix jq 7zz node asar; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "ERROR: '$cmd' is required but not found on PATH." >&2
-    echo "Hint: nix shell nixpkgs#p7zip nixpkgs#nodejs_20 nixpkgs#nodePackages.asar" >&2
+    echo "Hint: nix shell nixpkgs#_7zz nixpkgs#nodejs_20 nixpkgs#nodePackages.asar" >&2
     exit 1
   fi
 done
@@ -60,13 +60,11 @@ echo "==> Extracting DMG …"
 DMG_EXTRACT="$WORK_DIR/dmg-extract"
 mkdir -p "$DMG_EXTRACT"
 
-rc=0
-7z x -y "$dmg_store_path" -o"$DMG_EXTRACT" >/dev/null 2>&1 || rc=$?
-if (( rc > 2 )); then
-  echo "ERROR: 7z fatal error (exit code $rc)." >&2
+7zz x -y "$dmg_store_path" -o"$DMG_EXTRACT" >/dev/null 2>&1 || {
+  echo "ERROR: 7zz extraction failed." >&2
   exit 1
-fi
-echo "    7z exited with rc=$rc (OK)"
+}
+echo "    7zz extraction OK"
 
 APP_PATH="$(find "$DMG_EXTRACT" -name "Codex.app" -type d | head -1)"
 if [[ -z "$APP_PATH" ]]; then
