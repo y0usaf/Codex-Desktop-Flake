@@ -26,7 +26,7 @@
 in
   stdenv.mkDerivation {
     pname = "codex-desktop";
-    version = "0-unstable-2026-06-07";
+    version = "0-unstable-2026-06-12";
 
     src = fetchurl {
       url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
@@ -56,11 +56,8 @@ in
       echo "Source file size: $(du -h "$src" | cut -f1)"
 
       # Try to extract DMG (7zz 24+ supports APFS volumes directly)
-      7zz x -y "$src" -o"dmg-extract" 2>&1
-      if [ $? -ne 0 ]; then
-        echo "7zz extraction failed"
-        exit 1
-      fi
+      # Exit code 2 means non-fatal warnings (e.g. dangerous symlinks) — treat as success
+      7zz x -y "$src" -o"dmg-extract" 2>&1 || { rc=$?; [ $rc -ne 2 ] && { echo "7zz extraction failed (exit $rc)"; exit 1; }; }
 
       # Find the .app bundle (it's usually in Codex Installer/)
       APP_PATH=$(find dmg-extract -name "Codex.app" -type d | head -1)
