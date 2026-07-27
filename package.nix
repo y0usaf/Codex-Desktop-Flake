@@ -4,19 +4,24 @@
   fetchurl,
   _7zz,
   asar,
-  nodejs_20,
+  nodejs_22,
   python3,
   makeWrapper,
-  electron_40,
+  electron_42,
   gnumake,
   pkg-config,
 }: let
-  betterSqlite3Version = "12.9.0";
+  # Version bundled inside the app (checked in patchPhase). The rebuilt
+  # native module uses a newer release: 12.9.x does not compile against the
+  # V8 in electron_42 headers (SetNativeDataProperty/External::Value API
+  # changes); 12.11.x restores compatibility while keeping the same JS API.
+  bundledBetterSqlite3Version = "12.9.0";
+  betterSqlite3Version = "12.11.1";
   nodePtyVersion = "1.1.0";
 
   betterSqlite3Src = fetchurl {
     url = "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-${betterSqlite3Version}.tgz";
-    hash = "sha256-rQ4pZQFAxJ0DNbHTVllqqBZvErdY9BiphEYTDjJ48lA=";
+    hash = "sha256-6/Dtdaelnbyzsku9AU70nZ8VvDKOSty/UW8qj636KDU=";
   };
 
   nodePtySrc = fetchurl {
@@ -26,26 +31,26 @@
 in
   stdenv.mkDerivation {
     pname = "codex-desktop";
-    version = "0-unstable-2026-06-23";
+    version = "26.721.41059";
 
     src = fetchurl {
-      url = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
-      hash = "sha256-7+3GyP+o+Ued3e0/7UDFytJhx3m3mP3RYYR/SBQZhcI=";
+      url = "https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg";
+      hash = "sha256-BITdV2BG6cDNFOoIUB4QZ9LAOpyI78c8rn5I4Bc+Fec=";
     };
 
     nativeBuildInputs = [
       _7zz
       asar
-      nodejs_20
+      nodejs_22
       python3
       makeWrapper
-      electron_40
+      electron_42
       gnumake
       pkg-config
     ];
 
     buildInputs = [
-      nodejs_20
+      nodejs_22
       python3
     ];
 
@@ -60,7 +65,8 @@ in
       7zz x -y "$src" -o"dmg-extract" 2>&1 || { rc=$?; [ $rc -ne 2 ] && { echo "7zz extraction failed (exit $rc)"; exit 1; }; }
 
       # Find the .app bundle (it's usually in Codex Installer/)
-      APP_PATH=$(find dmg-extract -name "Codex.app" -type d | head -1)
+      # 2026-07: upstream rebranded the bundle to ChatGPT.app (productName stays "Codex")
+      APP_PATH=$(find dmg-extract \( -name "ChatGPT.app" -o -name "Codex.app" \) -type d | head -1)
 
       if [ -z "$APP_PATH" ]; then
         echo "Error: Could not find .app bundle in DMG"
@@ -99,10 +105,10 @@ in
       find app-extracted -name "sparkle.node" -delete 2>/dev/null || true
 
       # Ensure pinned rebuild module versions still match the bundled app.
-      appBetterSqlite3Version="$(${nodejs_20}/bin/node -p "require('./app-extracted/node_modules/better-sqlite3/package.json').version")"
-      appNodePtyVersion="$(${nodejs_20}/bin/node -p "require('./app-extracted/node_modules/node-pty/package.json').version")"
-      if [ "$appBetterSqlite3Version" != "${betterSqlite3Version}" ]; then
-        echo "Error: better-sqlite3 version mismatch. App has $appBetterSqlite3Version, package expects ${betterSqlite3Version}."
+      appBetterSqlite3Version="$(${nodejs_22}/bin/node -p "require('./app-extracted/node_modules/better-sqlite3/package.json').version")"
+      appNodePtyVersion="$(${nodejs_22}/bin/node -p "require('./app-extracted/node_modules/node-pty/package.json').version")"
+      if [ "$appBetterSqlite3Version" != "${bundledBetterSqlite3Version}" ]; then
+        echo "Error: better-sqlite3 version mismatch. App has $appBetterSqlite3Version, package expects ${bundledBetterSqlite3Version}."
         exit 1
       fi
       if [ "$appNodePtyVersion" != "${nodePtyVersion}" ]; then
@@ -112,7 +118,9 @@ in
 
       # Remove pre-compiled macOS native .node files (will be rebuilt for Linux)
       echo "Removing pre-compiled macOS native modules..."
-      find app-extracted -name "*.node" -delete 2>/dev/null || true
+      # Keep serialport linux prebuilds (@worklouder device-kit); they are the
+      # runtime binaries for Linux and are not rebuilt below.
+      find app-extracted -name "*.node" ! -path "*prebuilds/linux*" -delete 2>/dev/null || true
     '';
 
     configurePhase = ''
@@ -124,9 +132,9 @@ in
       cd app-extracted
 
       # Configure npm for Electron-specific native module compilation
-      export npm_config_target=${electron_40.version}
+      export npm_config_target=${electron_42.version}
       export npm_config_runtime=electron
-      export npm_config_nodedir=${electron_40.headers}
+      export npm_config_nodedir=${electron_42.headers}
       export HOME=$TMPDIR
 
       build_native_module() {
@@ -138,7 +146,7 @@ in
         mkdir -p "node_modules/$module_name"
         tar -xzf "$module_tarball" --strip-components=1 -C "node_modules/$module_name"
         cd "node_modules/$module_name"
-        ${nodejs_20}/bin/node ${nodejs_20}/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --release
+        ${nodejs_22}/bin/node ${nodejs_22}/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --release
         cd ../..
       }
 
@@ -162,43 +170,43 @@ in
       mkdir -p $out/bin
       mkdir -p $out/share/applications
 
-      # Copy Electron binary and resources from electron_40
+      # Copy Electron binary and resources from electron_42
       echo "Setting up Electron 40..."
-      cp ${electron_40}/libexec/electron/electron $out/lib/codex-desktop/
+      cp ${electron_42}/libexec/electron/electron $out/lib/codex-desktop/
 
       # Copy all Electron resources and supporting files
       mkdir -p $out/lib/codex-desktop/resources
 
       # Copy pak files and other resources
-      for f in ${electron_40}/libexec/electron/*.pak; do
+      for f in ${electron_42}/libexec/electron/*.pak; do
         [ -e "$f" ] && cp "$f" $out/lib/codex-desktop/
       done
 
       # Copy data files
-      for f in ${electron_40}/libexec/electron/*.dat; do
+      for f in ${electron_42}/libexec/electron/*.dat; do
         [ -e "$f" ] && cp "$f" $out/lib/codex-desktop/
       done
 
       # Copy v8 snapshot
-      for f in ${electron_40}/libexec/electron/v8_context_snapshot*.bin; do
+      for f in ${electron_42}/libexec/electron/v8_context_snapshot*.bin; do
         [ -e "$f" ] && cp "$f" $out/lib/codex-desktop/
       done
-      for f in ${electron_40}/libexec/electron/snapshot_blob*.bin; do
+      for f in ${electron_42}/libexec/electron/snapshot_blob*.bin; do
         [ -e "$f" ] && cp "$f" $out/lib/codex-desktop/
       done
 
       # Copy locales required by Chromium runtime
-      if [ -d "${electron_40}/libexec/electron/locales" ]; then
-        cp -r "${electron_40}/libexec/electron/locales" $out/lib/codex-desktop/
+      if [ -d "${electron_42}/libexec/electron/locales" ]; then
+        cp -r "${electron_42}/libexec/electron/locales" $out/lib/codex-desktop/
       fi
 
       # Copy crashpad handler
-      if [ -f "${electron_40}/libexec/electron/chrome_crashpad_handler" ]; then
-        cp "${electron_40}/libexec/electron/chrome_crashpad_handler" $out/lib/codex-desktop/
+      if [ -f "${electron_42}/libexec/electron/chrome_crashpad_handler" ]; then
+        cp "${electron_42}/libexec/electron/chrome_crashpad_handler" $out/lib/codex-desktop/
       fi
 
       # Copy any other necessary binaries and shared libraries
-      for bin in ${electron_40}/libexec/electron/chrome_*.so ${electron_40}/libexec/electron/libEGL*.so* ${electron_40}/libexec/electron/libGLES*.so* ${electron_40}/libexec/electron/libffmpeg*.so* ${electron_40}/libexec/electron/libvk_swiftshader*.so* ${electron_40}/libexec/electron/libvulkan*.so*; do
+      for bin in ${electron_42}/libexec/electron/chrome_*.so ${electron_42}/libexec/electron/libEGL*.so* ${electron_42}/libexec/electron/libGLES*.so* ${electron_42}/libexec/electron/libffmpeg*.so* ${electron_42}/libexec/electron/libvk_swiftshader*.so* ${electron_42}/libexec/electron/libvulkan*.so*; do
         [ -e "$bin" ] && cp "$bin" $out/lib/codex-desktop/ 2>/dev/null || true
       done
 
@@ -232,14 +240,14 @@ in
       fi
 
       # Create launcher script with proper library paths.
-      # Nix string escaping note: ${electron_40} and ${python3} are Nix store-path
+      # Nix string escaping note: ${electron_42} and ${python3} are Nix store-path
       # interpolations resolved at build time. Runtime bash variables use $VAR (no braces)
       # or ''${VAR} (Nix ''$ escape) to prevent Nix from treating them as interpolations.
       cat > $out/bin/codex-desktop << 'WRAPPER'
 #!/bin/bash
-# electron_40 and python3 references below are baked-in Nix store paths (build-time).
+# electron_42 and python3 references below are baked-in Nix store paths (build-time).
 # Runtime bash variables use dollar-brace syntax; only Nix-known names are interpolated.
-export LD_LIBRARY_PATH="${electron_40}/lib:${electron_40}/libexec/electron''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${electron_42}/lib:${electron_42}/libexec/electron''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export NIXOS_OZONE_WL=1
 # auto-detect Wayland vs X11 rather than forcing one platform
 export ELECTRON_OZONE_PLATFORM_HINT=auto
